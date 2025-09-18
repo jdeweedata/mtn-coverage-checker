@@ -4,7 +4,7 @@ import { TechnologyToggle } from './components/TechnologyToggle';
 import { CoverageDisplay } from './components/CoverageDisplay';
 import { GoogleMap } from './components/GoogleMap';
 import { CoverageResult, ToggleState, TechnologyType } from './types';
-import { mtnApi } from './utils/mtnApi';
+import { apiClient } from './utils/apiClient';
 import { Zap, MapPin, Settings, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -26,7 +26,7 @@ function App() {
   const handleAddressSelect = async (address: string, lat: number, lng: number) => {
     setIsLoading(true);
     try {
-      const coverage = await mtnApi.checkCoverage(lat, lng, address);
+      const coverage = await apiClient.checkCoverage(lat, lng, address);
       setResult(coverage);
 
       // Extract available technologies from coverage results

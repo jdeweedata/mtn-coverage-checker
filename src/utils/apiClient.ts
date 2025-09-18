@@ -14,9 +14,9 @@ export class ApiClient {
   }
 
   /**
-   * Proxy MTN coverage API calls through Vercel function
+   * Proxy MTN coverage API calls through Vercel function for a single technology
    */
-  async checkCoverage(lat: number, lng: number, technology: string = 'ALL'): Promise<any> {
+  async checkSingleTechnology(lat: number, lng: number, technology: string = 'ALL'): Promise<any> {
     try {
       const params = new URLSearchParams({
         lat: lat.toString(),
@@ -58,7 +58,7 @@ export class ApiClient {
     // Run checks in parallel for better performance
     const promises = technologies.map(async (tech) => {
       try {
-        const result = await this.checkCoverage(lat, lng, tech);
+        const result = await this.checkSingleTechnology(lat, lng, tech);
         return { tech, result };
       } catch (error) {
         return { tech, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -114,6 +114,57 @@ export class ApiClient {
       console.error('Geocoding failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Check coverage for a location with address - compatible with existing app structure
+   */
+  async checkCoverage(lat: number, lng: number, address: string): Promise<any> {
+    try {
+      // Check multiple technologies in parallel
+      const technologies = ['2G', '3G', '4G', '5G', 'UNCAPPED_WIRELESS', 'FIBRE', 'LICENSED_WIRELESS', 'FIXED_LTE'];
+      const results = await this.checkMultipleTechnologies(lat, lng, technologies);
+
+      // Format the response to match the expected structure
+      return {
+        address,
+        coordinates: { lat, lng },
+        coverage: results,
+        timestamp: new Date().toISOString(),
+        source: 'MTN Live API (via Vercel proxy)'
+      };
+    } catch (error) {
+      console.error('Coverage check failed:', error);
+      // Return a structure that indicates no coverage available
+      return {
+        address,
+        coordinates: { lat, lng },
+        coverage: {},
+        timestamp: new Date().toISOString(),
+        source: 'MTN Live API (via Vercel proxy)',
+        error: error instanceof Error ? error.message : 'Coverage check failed'
+      };
+    }
+  }
+
+  /**
+   * Generate WMS URL for coverage overlay using proxy
+   */
+  getWMSMapUrl(lat: number, lng: number, width = 800, height = 600, technology: string = 'ALL'): string {
+    // Return a URL that uses our Vercel proxy for WMS requests
+    const params = new URLSearchParams({
+      lat: lat.toString(),
+      lng: lng.toString(),
+      technology,
+      type: 'wms',
+      width: width.toString(),
+      height: height.toString(),
+      format: 'image/png'
+    });
+
+    return this.useProxy
+      ? `/api/coverage?${params.toString()}`
+      : `${this.baseUrl}/api/coverage?${params.toString()}`;
   }
 
   /**

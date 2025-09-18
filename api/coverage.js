@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { lat, lng, technology = 'ALL', type = 'wms' } = req.query;
+  const { lat, lng, technology = 'ALL', type = 'wms', width, height, format } = req.query;
 
   if (!lat || !lng) {
     return res.status(400).json({ error: 'Missing required parameters: lat, lng' });
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
 
     // Build the appropriate URL based on request type
     if (type === 'wms') {
-      // WMS GetFeatureInfo request for coverage checking
+      // Handle both GetFeatureInfo (coverage checking) and GetMap (overlay images)
       const layerMap = {
         'ALL': 'EBU-RBUS-ALL',
         '2G': 'EBU-RBUS-ALL',
@@ -55,27 +55,52 @@ export default async function handler(req, res) {
       };
 
       const mlid = layerMap[technology] || 'EBU-RBUS-ALL';
-      const params = new URLSearchParams({
-        'mlid': mlid,
-        'SERVICE': 'WMS',
-        'VERSION': '1.1.1',
-        'REQUEST': 'GetFeatureInfo',
-        'FORMAT': 'image/png',
-        'TRANSPARENT': 'true',
-        'QUERY_LAYERS': mlid,
-        'LAYERS': mlid,
-        'exceptions': 'application/vnd.ogc.se_inimage',
-        'INFO_FORMAT': 'text/plain',
-        'FEATURE_COUNT': '50',
-        'X': '50',
-        'Y': '50',
-        'SRS': 'EPSG:4326',
-        'WIDTH': '101',
-        'HEIGHT': '101',
-        'BBOX': `${longitude-0.01},${latitude-0.01},${longitude+0.01},${latitude+0.01}`
-      });
 
-      url = `https://mtnsi.mtn.co.za/cache/geoserver/wms?${params.toString()}`;
+      if (width && height && format === 'image/png') {
+        // GetMap request for overlay images
+        const mapWidth = parseInt(width) || 800;
+        const mapHeight = parseInt(height) || 600;
+        const buffer = 0.05; // 5km buffer around point
+
+        const params = new URLSearchParams({
+          'mlid': mlid,
+          'SERVICE': 'WMS',
+          'VERSION': '1.1.1',
+          'REQUEST': 'GetMap',
+          'FORMAT': 'image/png',
+          'TRANSPARENT': 'true',
+          'LAYERS': mlid,
+          'SRS': 'EPSG:4326',
+          'WIDTH': mapWidth.toString(),
+          'HEIGHT': mapHeight.toString(),
+          'BBOX': `${longitude-buffer},${latitude-buffer},${longitude+buffer},${latitude+buffer}`
+        });
+
+        url = `https://mtnsi.mtn.co.za/cache/geoserver/wms?${params.toString()}`;
+      } else {
+        // GetFeatureInfo request for coverage checking
+        const params = new URLSearchParams({
+          'mlid': mlid,
+          'SERVICE': 'WMS',
+          'VERSION': '1.1.1',
+          'REQUEST': 'GetFeatureInfo',
+          'FORMAT': 'image/png',
+          'TRANSPARENT': 'true',
+          'QUERY_LAYERS': mlid,
+          'LAYERS': mlid,
+          'exceptions': 'application/vnd.ogc.se_inimage',
+          'INFO_FORMAT': 'text/plain',
+          'FEATURE_COUNT': '50',
+          'X': '50',
+          'Y': '50',
+          'SRS': 'EPSG:4326',
+          'WIDTH': '101',
+          'HEIGHT': '101',
+          'BBOX': `${longitude-0.01},${latitude-0.01},${longitude+0.01},${latitude+0.01}`
+        });
+
+        url = `https://mtnsi.mtn.co.za/cache/geoserver/wms?${params.toString()}`;
+      }
     } else if (type === 'point') {
       // Coverage API point endpoint
       url = `https://mtnsi.mtn.co.za/coverage/api/point?lat=${latitude}&lng=${longitude}`;
@@ -103,6 +128,15 @@ export default async function handler(req, res) {
 
     const contentType = response.headers.get('content-type');
 
+    // For GetMap requests (image overlays), return the image directly
+    if (width && height && format === 'image/png' && contentType && contentType.includes('image')) {
+      const buffer = await response.arrayBuffer();
+      res.setHeader('Content-Type', contentType);
+      res.status(200).send(Buffer.from(buffer));
+      return;
+    }
+
+    // For other requests, return JSON
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
       res.status(200).json(data);
@@ -115,7 +149,7 @@ export default async function handler(req, res) {
         coordinates: { lat: latitude, lng: longitude }
       });
     } else {
-      // Handle binary data (like images)
+      // Handle binary data (like images) for other cases
       const buffer = await response.arrayBuffer();
       const base64 = Buffer.from(buffer).toString('base64');
       res.status(200).json({

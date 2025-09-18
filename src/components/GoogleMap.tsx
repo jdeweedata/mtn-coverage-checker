@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { CoverageResult } from '../types';
-import { mtnApi } from '../utils/mtnApi';
+import { apiClient } from '../utils/apiClient';
 import clsx from 'clsx';
 import { MapPin, Layers } from 'lucide-react';
 
@@ -147,8 +147,8 @@ export const GoogleMap: React.FC<GoogleMapProps> = ({
     }
 
     try {
-      // Get WMS overlay URL from MTN API
-      const overlayUrl = mtnApi.getWMSMapUrl(lat, lng, 800, 600);
+      // Get WMS overlay URL from API client
+      const overlayUrl = apiClient.getWMSMapUrl(lat, lng, 800, 600);
 
       const bounds = new google.maps.LatLngBounds(
         new google.maps.LatLng(lat - 0.05, lng - 0.05), // SW corner
