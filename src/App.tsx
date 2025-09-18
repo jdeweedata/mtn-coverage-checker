@@ -31,15 +31,19 @@ function App() {
 
       // Extract available technologies from coverage results
       const technologies: TechnologyType[] = [];
-      Object.values(coverage.coverage).forEach(source => {
-        if (source?.types) {
-          source.types.forEach((tech: any) => {
-            if (tech.available && !technologies.includes(tech.type)) {
-              technologies.push(tech.type);
-            }
-          });
-        }
-      });
+
+      // Safety check for coverage data
+      if (coverage.coverage && typeof coverage.coverage === 'object') {
+        Object.values(coverage.coverage).forEach(source => {
+          if (source?.types && Array.isArray(source.types)) {
+            source.types.forEach((tech: any) => {
+              if (tech.available && !technologies.includes(tech.type)) {
+                technologies.push(tech.type);
+              }
+            });
+          }
+        });
+      }
 
       setAvailableTechnologies(technologies);
 
