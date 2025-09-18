@@ -124,3 +124,6 @@ MIT License - see LICENSE file for details
 - MTN South Africa for API access
 - Google Maps Platform
 - Vercel for hosting infrastructure
+
+---
+*Last updated: $(date)*
