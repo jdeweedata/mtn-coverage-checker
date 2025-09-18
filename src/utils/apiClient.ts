@@ -129,29 +129,17 @@ export class ApiClient {
       const processedCoverage: any = {};
 
       Object.entries(results).forEach(([tech, result]: [string, any]) => {
-        if (result && !result.error) {
-          // Check if we have actual coverage data
-          const hasCoverage = this.parseCoverageResult(result);
+        // Ensure we always have a proper structure with types array
+        const hasCoverage = (result && !result.error) ? this.parseCoverageResult(result) : false;
 
-          processedCoverage[tech] = {
-            types: [{
-              type: tech,
-              available: hasCoverage,
-              signal_strength: hasCoverage ? 'Good' : 'No Signal',
-              technology: tech
-            }]
-          };
-        } else {
-          // No coverage or error
-          processedCoverage[tech] = {
-            types: [{
-              type: tech,
-              available: false,
-              signal_strength: 'No Signal',
-              technology: tech
-            }]
-          };
-        }
+        processedCoverage[tech] = {
+          types: [{
+            type: tech,
+            available: hasCoverage,
+            signal_strength: hasCoverage ? 'Good' : 'No Signal',
+            technology: tech
+          }]
+        };
       });
 
       // Format the response to match the expected structure
@@ -164,11 +152,26 @@ export class ApiClient {
       };
     } catch (error) {
       console.error('Coverage check failed:', error);
-      // Return a structure that indicates no coverage available
+
+      // Return a safe structure with empty coverage for all technologies
+      const safeCoverage: any = {};
+      const technologies = ['2G', '3G', '4G', '5G', 'UNCAPPED_WIRELESS', 'FIBRE', 'LICENSED_WIRELESS', 'FIXED_LTE'];
+
+      technologies.forEach(tech => {
+        safeCoverage[tech] = {
+          types: [{
+            type: tech,
+            available: false,
+            signal_strength: 'No Signal',
+            technology: tech
+          }]
+        };
+      });
+
       return {
         address,
         coordinates: { lat, lng },
-        coverage: {},
+        coverage: safeCoverage,
         timestamp: new Date().toISOString(),
         source: 'MTN Live API (via Vercel proxy)',
         error: error instanceof Error ? error.message : 'Coverage check failed'
