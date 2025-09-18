@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MTN Coverage Map Implementation</title>
+    
+    <!-- jQuery and jQuery Mobile CSS -->
+    <link rel="stylesheet" href="https://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css">
+    
+    <style>
+        /* Core Map Styles */
+        #map-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Layer Control Panel */
+        .layer-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 200px;
+        }
+        
+        .layer-control-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .layer-control-item:hover {
+            background: #e8e8e8;
+        }
+        
+        .layer-control-item.active {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .layer-name {
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .layer-status {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background: rgba(0,0,0,0.1);
+        }
+        
+        .layer-control-item.active .layer-status {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        /* Search Box */
+        .search-container {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+        }
+        
+        #search-input {
+            width: 400px;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 24px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            outline: none;
+        }
+        
+        /* Map Style Selector */
+        .map-style-selector {
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            overflow: hidden;
+            z-index: 1000;
+        }
+        
+        .map-style-option {
+            padding: 8px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 14px;
+        }
+        
+        .map-style-option:last-child {
+            border-bottom: none;
+        }
+        
+        .map-style-option:hover {
+            background: #f5f5f5;
+        }
+        
+        .map-style-option.active {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        /* Loading Indicator */
+        .loading-indicator {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            display: none;
+            z-index: 1000;
+            font-size: 12px;
+        }
+        
+        .loading-indicator.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <!-- Google Map Container -->
+        <div id="map"></div>
+        
+        <!-- Search Box -->
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Search for a location">
+        </div>
+        
+        <!-- Layer Controls -->
+        <div class="layer-controls">
+            <h4 style="margin-top: 0; margin-bottom: 15px;">Coverage Layers</h4>
+            <div class="layer-control-item active" data-layer="all">
+                <span class="layer-name">All</span>
+                <span class="layer-status">ON</span>
+            </div>
+            <div class="layer-control-item" data-layer="fibre">
+                <span class="layer-name">Fibre</span>
+                <span class="layer-status">OFF</span>
+            </div>
+            <div class="layer-control-item" data-layer="licensed-wireless">
+                <span class="layer-name">Licensed Wireless</span>
+                <span class="layer-status">OFF</span>
+            </div>
+            <div class="layer-control-item" data-layer="fixed-lte">
+                <span class="layer-name">Fixed LTE</span>
+                <span class="layer-status">OFF</span>
+            </div>
+            <div class="layer-control-item" data-layer="uncapped-wireless">
+                <span class="layer-name">Uncapped Wireless</span>
+                <span class="layer-status">OFF</span>
+            </div>
+        </div>
+        
+        <!-- Map Style Selector -->
+        <div class="map-style-selector">
+            <div class="map-style-option active" data-style="roadmap">Street Map</div>
+            <div class="map-style-option" data-style="hybrid">Hybrid</div>
+            <div class="map-style-option" data-style="satellite">Satellite</div>
+            <div class="map-style-option" data-style="terrain">Terrain</div>
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div class="loading-indicator">Loading coverage data...</div>
+    </div>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-1.9.1.min.js"></script>
+    
+    <!-- Main Application Script -->
+    <script>
+        // Configuration
+        const CONFIG = {
+            googleMapsApiKey: 'YOUR_GOOGLE_MAPS_API_KEY', // Replace with your API key
+            wmsBaseUrl: 'https://mtnsi.mtn.co.za/cache/geoserver/wms',
+            defaultCenter: { lat: -26.042489, lng: 28.059244 },
+            defaultZoom: 18,
+            tileSize: 256,
+            
+            // Layer Configurations
+            layers: {
+                all: {
+                    mlid: 'EBU-RBUS-ALL',
+                    geoserverLayer: 'mtnsi:MTN-EBU-RBUS-ALL2',
+                    style: 'MTN-EBU-RBUS-ALL',
+                    opacity: 0.7
+                },
+                fibre: {
+                    mlid: 'FTTBCoverage',
+                    geoserverLayer: 'mtnsi:MTN-FTTB-Feasible',
+                    style: 'MTN-FTTB-Feasible-G',
+                    opacity: 0.7
+                },
+                'licensed-wireless': {
+                    mlid: 'PMPCoverage',
+                    geoserverLayer: 'mtnsi:MTN-PMP-Feasible-Integrated',
+                    style: 'MTN-PMP-Feasible-B',
+                    opacity: 0.7
+                },
+                'fixed-lte': {
+                    mlid: 'FLTECoverageEBU',
+                    geoserverLayer: 'mtnsi:MTNSA-Coverage-FIXLTE-EBU-0',
+                    style: 'MTN-Coverage-FIXLTE-EBU-R',
+                    opacity: 0.7
+                },
+                'uncapped-wireless': {
+                    mlid: 'UncappedWirelessEBU',
+                    geoserverLayer: 'mtnsi:MTNSA-Coverage-Tarana',
+                    style: 'MTN-Coverage-UWA-EBU',
+                    opacity: 0.7
+                }
+            }
+        };
+        
+        // Global Variables
+        let map;
+        let wmsOverlays = {};
+        let activeOverlays = new Set(['all']); // Default active layer
+        let searchBox;
+        
+        // Initialize Map
+        function initMap() {
+            // Create map instance
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: CONFIG.defaultCenter,
+                zoom: CONFIG.defaultZoom,
+                mapTypeId: 'roadmap',
+                mapTypeControl: false,
+                fullscreenControl: true,
+                streetViewControl: true,
+                zoomControl: true,
+                zoomControlOptions: {
+                    position: google.maps.ControlPosition.RIGHT_CENTER
+                }
+            });
+            
+            // Initialize search box
+            initSearchBox();
+            
+            // Initialize WMS layers
+            initWMSLayers();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Load default layer
+            toggleLayer('all', true);
+        }
+        
+        // Initialize Search Box
+        function initSearchBox() {
+            const input = document.getElementById('search-input');
+            searchBox = new google.maps.places.SearchBox(input);
+            
+            // Bias search results to current map bounds
+            map.addListener('bounds_changed', function() {
+                searchBox.setBounds(map.getBounds());
+            });
+            
+            // Handle place selection
+            searchBox.addListener('places_changed', function() {
+                const places = searchBox.getPlaces();
+                
+                if (places.length === 0) return;
+                
+                // Get first place and center map
+                const place = places[0];
+                if (place.geometry.viewport) {
+                    map.fitBounds(place.geometry.viewport);
+                } else {
+                    map.setCenter(place.geometry.location);
+                    map.setZoom(17);
+                }
+            });
+        }
+        
+        // Initialize WMS Layers
+        function initWMSLayers() {
+            Object.keys(CONFIG.layers).forEach(layerKey => {
+                const layerConfig = CONFIG.layers[layerKey];
+                
+                // Create WMS overlay
+                const wmsOverlay = new google.maps.ImageMapType({
+                    getTileUrl: function(coord, zoom) {
+                        return getWMSTileUrl(coord, zoom, layerConfig);
+                    },
+                    tileSize: new google.maps.Size(CONFIG.tileSize, CONFIG.tileSize),
+                    opacity: layerConfig.opacity,
+                    name: layerKey
+                });
+                
+                wmsOverlays[layerKey] = wmsOverlay;
+            });
+        }
+        
+        // Get WMS Tile URL
+        function getWMSTileUrl(coord, zoom, layerConfig) {
+            const proj = map.getProjection();
+            const zfactor = Math.pow(2, zoom);
+            const top = proj.fromPointToLatLng(new google.maps.Point(
+                coord.x * CONFIG.tileSize / zfactor,
+                coord.y * CONFIG.tileSize / zfactor
+            ));
+            const bot = proj.fromPointToLatLng(new google.maps.Point(
+                (coord.x + 1) * CONFIG.tileSize / zfactor,
+                (coord.y + 1) * CONFIG.tileSize / zfactor
+            ));
+            
+            // Convert to EPSG:900913 (Web Mercator)
+            const bbox = mercatorBounds(bot.lng(), bot.lat(), top.lng(), top.lat());
+            
+            // Build WMS URL
+            const params = new URLSearchParams({
+                'mlid': layerConfig.mlid,
+                'SERVICE': 'WMS',
+                'REQUEST': 'GetMap',
+                'VERSION': '1.1.1',
+                'LAYERS': layerConfig.geoserverLayer,
+                'STYLES': layerConfig.style,
+                'FORMAT': 'image/png',
+                'TRANSPARENT': 'TRUE',
+                'TILED': 'TRUE',
+                'SRS': 'EPSG:900913',
+                'BBOX': bbox.join(','),
+                'WIDTH': CONFIG.tileSize,
+                'HEIGHT': CONFIG.tileSize
+            });
+            
+            return `${CONFIG.wmsBaseUrl}?${params.toString()}`;
+        }
+        
+        // Convert lat/lng to Web Mercator
+        function mercatorBounds(west, south, east, north) {
+            const EARTH_RADIUS = 6378137.0;
+            
+            function latToMercator(lat) {
+                const rad = lat * Math.PI / 180;
+                return Math.log(Math.tan(rad / 2 + Math.PI / 4)) * EARTH_RADIUS;
+            }
+            
+            function lngToMercator(lng) {
+                return lng * Math.PI / 180 * EARTH_RADIUS;
+            }
+            
+            return [
+                lngToMercator(west),
+                latToMercator(south),
+                lngToMercator(east),
+                latToMercator(north)
+            ];
+        }
+        
+        // Toggle Layer
+        function toggleLayer(layerKey, enable) {
+            const overlay = wmsOverlays[layerKey];
+            if (!overlay) return;
+            
+            showLoadingIndicator();
+            
+            if (enable) {
+                // Add overlay to map
+                map.overlayMapTypes.push(overlay);
+                activeOverlays.add(layerKey);
+                
+                // Update UI
+                $(`.layer-control-item[data-layer="${layerKey}"]`)
+                    .addClass('active')
+                    .find('.layer-status')
+                    .text('ON');
+            } else {
+                // Remove overlay from map
+                const overlayIndex = map.overlayMapTypes.getArray().indexOf(overlay);
+                if (overlayIndex > -1) {
+                    map.overlayMapTypes.removeAt(overlayIndex);
+                }
+                activeOverlays.delete(layerKey);
+                
+                // Update UI
+                $(`.layer-control-item[data-layer="${layerKey}"]`)
+                    .removeClass('active')
+                    .find('.layer-status')
+                    .text('OFF');
+            }
+            
+            // Hide loading indicator after a delay
+            setTimeout(hideLoadingIndicator, 500);
+        }
+        
+        // Setup Event Listeners
+        function setupEventListeners() {
+            // Layer toggle clicks
+            $('.layer-control-item').click(function() {
+                const layerKey = $(this).data('layer');
+                const isActive = $(this).hasClass('active');
+                
+                // Special handling for "All" layer
+                if (layerKey === 'all') {
+                    // Turn off all other layers when "All" is activated
+                    if (!isActive) {
+                        activeOverlays.forEach(key => {
+                            if (key !== 'all') {
+                                toggleLayer(key, false);
+                            }
+                        });
+                    }
+                } else {
+                    // Turn off "All" layer when individual layer is activated
+                    if (!isActive && activeOverlays.has('all')) {
+                        toggleLayer('all', false);
+                    }
+                }
+                
+                toggleLayer(layerKey, !isActive);
+            });
+            
+            // Map style changes
+            $('.map-style-option').click(function() {
+                const style = $(this).data('style');
+                map.setMapTypeId(style);
+                
+                // Update UI
+                $('.map-style-option').removeClass('active');
+                $(this).addClass('active');
+            });
+            
+            // Map events for loading indicator
+            google.maps.event.addListener(map, 'dragstart', showLoadingIndicator);
+            google.maps.event.addListener(map, 'idle', hideLoadingIndicator);
+            google.maps.event.addListener(map, 'zoom_changed', showLoadingIndicator);
+        }
+        
+        // Loading Indicator Functions
+        function showLoadingIndicator() {
+            $('.loading-indicator').addClass('active');
+        }
+        
+        function hideLoadingIndicator() {
+            $('.loading-indicator').removeClass('active');
+        }
+        
+        // Error Handling
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('Error:', msg, 'at', url, 'line', line);
+            return true;
+        };
+        
+        // Initialize when Google Maps loads
+        window.mapLoaded = initMap;
+    </script>
+    
+    <!-- Load Google Maps API -->
+    <script async defer 
+        src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&v=3&callback=mapLoaded&libraries=places,geometry">
+    </script>
+</body>
+</html>
