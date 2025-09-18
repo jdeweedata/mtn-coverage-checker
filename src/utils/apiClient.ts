@@ -125,11 +125,40 @@ export class ApiClient {
       const technologies = ['2G', '3G', '4G', '5G', 'UNCAPPED_WIRELESS', 'FIBRE', 'LICENSED_WIRELESS', 'FIXED_LTE'];
       const results = await this.checkMultipleTechnologies(lat, lng, technologies);
 
+      // Process results to determine coverage availability
+      const processedCoverage: any = {};
+
+      Object.entries(results).forEach(([tech, result]: [string, any]) => {
+        if (result && !result.error) {
+          // Check if we have actual coverage data
+          const hasCoverage = this.parseCoverageResult(result);
+
+          processedCoverage[tech] = {
+            types: [{
+              type: tech,
+              available: hasCoverage,
+              signal_strength: hasCoverage ? 'Good' : 'No Signal',
+              technology: tech
+            }]
+          };
+        } else {
+          // No coverage or error
+          processedCoverage[tech] = {
+            types: [{
+              type: tech,
+              available: false,
+              signal_strength: 'No Signal',
+              technology: tech
+            }]
+          };
+        }
+      });
+
       // Format the response to match the expected structure
       return {
         address,
         coordinates: { lat, lng },
-        coverage: results,
+        coverage: processedCoverage,
         timestamp: new Date().toISOString(),
         source: 'MTN Live API (via Vercel proxy)'
       };
@@ -145,6 +174,30 @@ export class ApiClient {
         error: error instanceof Error ? error.message : 'Coverage check failed'
       };
     }
+  }
+
+  /**
+   * Parse MTN API response to determine if coverage is available
+   */
+  private parseCoverageResult(result: any): boolean {
+    if (!result) return false;
+
+    // If it's a text response, check for coverage indicators
+    if (result.type === 'text' && result.content) {
+      const content = result.content.toLowerCase();
+      // MTN returns specific text when there's no coverage
+      return !content.includes('no features') &&
+             !content.includes('outside') &&
+             content.trim() !== '';
+    }
+
+    // If it's binary data (image), assume it means there's coverage
+    if (result.type === 'binary' && result.content) {
+      return true;
+    }
+
+    // For other response types, be conservative
+    return false;
   }
 
   /**
