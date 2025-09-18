@@ -94,9 +94,14 @@ export const CoverageDisplay: React.FC<CoverageDisplayProps> = ({
       source?: string;
     }> = [];
 
+    // Safety check for coverage data
+    if (!result.coverage || typeof result.coverage !== 'object') {
+      return info;
+    }
+
     // Extract coverage data from different sources
     Object.values(result.coverage).forEach(source => {
-      if (source?.types) {
+      if (source?.types && Array.isArray(source.types)) {
         source.types.forEach((tech: any) => {
           if (activeTechnologies.includes(tech.type)) {
             info.push({
@@ -147,12 +152,12 @@ export const CoverageDisplay: React.FC<CoverageDisplayProps> = ({
       </div>
 
       {/* Coverage Results */}
-      {result.success && coverageInfo.length > 0 ? (
+      {result.success && coverageInfo && coverageInfo.length > 0 ? (
         <div className="card">
           <div className="card-header">
             <h3 className="text-lg font-semibold">Coverage Results</h3>
             <p className="text-sm text-gray-600">
-              Showing results for {activeTechnologies.length} selected technologies
+              Showing results for {activeTechnologies?.length || 0} selected technologies
             </p>
           </div>
           <div className="card-content">
